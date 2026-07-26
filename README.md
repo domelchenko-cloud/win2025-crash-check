@@ -91,6 +91,41 @@ powershell -ExecutionPolicy Bypass -File run-mempat.ps1 4096 1024
 The `-ExecutionPolicy Bypass` form also avoids the download/execution-policy
 block. `Ctrl+C` stops the script and its instances either way.
 
+## Filling memory with Testlimit (`run-testlimit.ps1`)
+
+`run-testlimit.ps1` uses Sysinternals **Testlimit** to fill a target amount of
+memory in repeated bursts — useful for driving commit/pagefile pressure
+alongside (or instead of) `mempat`. It takes the **total** MiB to fill and an
+optional **wait** in seconds (default 5), and runs, in a forever loop:
+
+```
+testlimit64.exe -accepteula -d 512 -c <ceil(TotalMB/512)>
+```
+
+`-d 512` allocates and touches 512 MiB chunks; `-c` is the chunk count needed
+to reach the target (rounded up to the 512 MiB granularity). Each burst runs
+for `WaitSeconds`, is killed (freeing its memory), and restarted. `Ctrl+C`
+stops the loop and kills any running instance.
+
+`testlimit64.exe` must be in the same folder or on `PATH` (it is a separate
+[Sysinternals](https://learn.microsoft.com/sysinternals/downloads/testlimit)
+download, not part of this repo). If your build rejects `-accepteula`, remove
+it from the script and accept the EULA once by running `testlimit64.exe`
+manually.
+
+**PowerShell:**
+
+```powershell
+.\run-testlimit.ps1 4096          # ~4 GB per burst, 5 s each
+.\run-testlimit.ps1 4096 10       # ~4 GB per burst, 10 s each
+```
+
+**cmd.exe:**
+
+```cmd
+powershell -ExecutionPolicy Bypass -File run-testlimit.ps1 4096
+```
+
 ## Building
 
 ### CI (recommended — download a prebuilt binary)
