@@ -47,7 +47,6 @@ int main(int argc, char** argv) {
            (unsigned long long)slots, (unsigned long long)seed);
 
     uint64_t base = seed;
-    unsigned long long total_err = 0;
 
     for (unsigned long c = 0; iters == 0 || c < iters; c++) {
         /* WRITE: page i gets value base+i, replicated across its slots (wraps naturally) */
@@ -58,29 +57,27 @@ int main(int argc, char** argv) {
                 *(volatile uint64_t*)(pg + p) = v;   /* volatile: force the store to hit memory */
         }
 
-        /* READ + CHECK: same expected value per page */
-        unsigned long long err = 0;
+        /* READ + CHECK: same expected value per page; stop on the first mismatch */
         for (size_t i = 0; i < npages; i++) {
             BYTE* pg = mem + i * PGSZ;
             uint64_t v = base + i;
             for (size_t p = offset; p + 8 <= PGSZ; p += stride) {
                 uint64_t got = *(volatile uint64_t*)(pg + p);  /* volatile: force a real load-back */
                 if (got != v) {
-                    if (++err <= 20)
-                        printf("MISMATCH cyc %lu page %llu off %llu addr %p exp 0x%016llX got 0x%016llX\n",
-                               c, (unsigned long long)i, (unsigned long long)p, (void*)(pg + p),
-                               (unsigned long long)v, (unsigned long long)got);
+                    printf("MISMATCH cyc %lu page %llu off %llu addr %p exp 0x%016llX got 0x%016llX\n",
+                           c, (unsigned long long)i, (unsigned long long)p, (void*)(pg + p),
+                           (unsigned long long)v, (unsigned long long)got);
+                    fflush(stdout);
+                    return 2;   /* corruption detected: signal via exit code and stop */
                 }
             }
         }
-        total_err += err;
-        printf("cycle %lu base=0x%016llX errors=%llu total=%llu\n",
-               c, (unsigned long long)base, err, total_err);
+        printf("cycle %lu base=0x%016llX ok\n", c, (unsigned long long)base);
         fflush(stdout);
 
         base += npages;    /* continue from current pattern value */
     }
 
-    printf("done. total errors=%llu\n", total_err);
-    return total_err ? 2 : 0;   /* nonzero exit signals detected corruption */
+    printf("done. no corruption detected.\n");
+    return 0;
 }

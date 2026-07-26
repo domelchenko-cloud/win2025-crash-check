@@ -19,8 +19,9 @@ round trip is exactly where silent corruption shows up.
   written at byte `offset` within the page and repeated every `stride` bytes.
   The value increments by 1 per page.
 - **Check pass:** the whole area is read back and each slot compared to its
-  expected value. Mismatches print `cycle / page / offset / address /
-  expected / got` (capped at 20 lines per cycle; all are counted).
+  expected value. On the first mismatch it prints the location (`cycle /
+  page / offset / address / expected / got`) and **exits immediately with
+  code 2**; a clean cycle prints `cycle N ... ok`.
 - After each cycle `base` advances by the page count, so the pattern keeps
   climbing across the whole run. Arithmetic is plain `uint64` and **wraps
   cleanly** (the check uses identical arithmetic, so it stays correct on wrap).
@@ -55,6 +56,40 @@ mempat.exe 512 0 0 8 0xABCD00  :: explicit seed for reproducible / coordinated r
 
 On an 8 GB VM, an area of ~7 GB drives heavy bidirectional paging; stop a
 forever-run with `Ctrl+C`.
+
+## Running many instances (`run-mempat.ps1`)
+
+`run-mempat.ps1` launches several `mempat` instances in the background to
+spread the load. It takes two arguments — the **total** MiB to test and the
+MiB **per instance** (default 512) — and starts `ceil(TotalMB / PerMB)`
+instances (stride 256, offset stepping +8 each, unique PID-based seed). It
+prints a line as each one starts, then stays alive until `Ctrl+C`, at which
+point it kills every instance. No log files are written: if any instance hits
+corruption it exits with code 2 and the script reports it in red.
+
+Keep `mempat.exe` in the same folder as the script (it's also found via the
+current dir / `PATH`).
+
+**PowerShell:**
+
+```powershell
+.\run-mempat.ps1 4096            # test 4096 MiB in 512 MiB chunks (8 instances)
+.\run-mempat.ps1 4096 1024       # test 4096 MiB in 1024 MiB chunks (4 instances)
+```
+
+If the script was downloaded (Mark-of-the-Web) and is blocked, either
+`Unblock-File .\run-mempat.ps1` or `Set-ExecutionPolicy -Scope Process Bypass`
+first.
+
+**cmd.exe:**
+
+```cmd
+powershell -ExecutionPolicy Bypass -File run-mempat.ps1 4096
+powershell -ExecutionPolicy Bypass -File run-mempat.ps1 4096 1024
+```
+
+The `-ExecutionPolicy Bypass` form also avoids the download/execution-policy
+block. `Ctrl+C` stops the script and its instances either way.
 
 ## Building
 
@@ -92,9 +127,11 @@ x86_64-w64-mingw32-gcc -O2 mempat.c -o mempat.exe
 
 ## Interpreting results
 
-- `errors=0` every cycle: memory and the pagefile round-trip are intact.
-- Any `MISMATCH` line: real corruption — note the address, expected, and got
-  values (a single flipped bit points at hardware/ECC; wholesale wrong values
-  or another process's range point at a paging/hypervisor fault).
+- `cycle N ... ok` lines and exit code `0`: memory and the pagefile round-trip
+  are intact.
+- A `MISMATCH` line and exit code `2`: real corruption — note the address,
+  expected, and got values (a single flipped bit points at hardware/ECC;
+  wholesale wrong values or another process's range point at a paging/
+  hypervisor fault). The process stops at the first mismatch.
 - If the VM itself crashes/BSODs or the process is killed during a run, that is
   itself the signal being hunted (e.g. resource-exhaustion instability).
