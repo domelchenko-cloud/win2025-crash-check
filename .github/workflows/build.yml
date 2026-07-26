@@ -1,0 +1,38 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to attach binaries to a release on tag pushes
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up MSVC (x64)
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Build
+        run: cl /O2 /nologo mempat.c
+
+      - name: Smoke test
+        run: .\mempat.exe 16 2   # 16 MB, 2 cycles; nonzero exit if corruption detected
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mempat-x64
+          path: mempat.exe
+
+      - name: Attach to release (tag pushes only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: mempat.exe
