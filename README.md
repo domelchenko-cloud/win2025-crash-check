@@ -20,8 +20,9 @@ round trip is exactly where silent corruption shows up.
   The value increments by 1 per page.
 - **Check pass:** the whole area is read back and each slot compared to its
   expected value. On the first mismatch it prints the location (`cycle /
-  page / offset / address / expected / got`) and **exits immediately with
-  code 2**; a clean cycle prints `cycle N ... ok`.
+  page / offset / address / expected / got`), then **dumps the whole failing
+  page in hex** (preceded by the expected pattern, start offset and stride) and
+  **exits immediately with code 2**; a clean cycle prints `cycle N ... ok`.
 - After each cycle `base` advances by the page count, so the pattern keeps
   climbing across the whole run. Arithmetic is plain `uint64` and **wraps
   cleanly** (the check uses identical arithmetic, so it stays correct on wrap).
@@ -35,7 +36,7 @@ round trip is exactly where silent corruption shows up.
 ## Usage
 
 ```
-mempat.exe [MB] [iters] [offset] [stride] [seed]
+mempat.exe [MB] [iters] [offset] [stride] [seed] [--zero]
 ```
 
 | Arg      | Meaning                                   | Default        |
@@ -45,6 +46,10 @@ mempat.exe [MB] [iters] [offset] [stride] [seed]
 | `offset` | Start byte offset of the pattern in a page| `0`            |
 | `stride` | Bytes between `uint64` slots within a page| `8` (dense)    |
 | `seed`   | Pattern base value (`0x...` accepted)     | `PID << 40`    |
+| `--zero` | Zero-fill the whole region once after allocation, before the pattern cycles | off |
+
+`--zero` may appear anywhere on the command line; the positional args keep
+their order regardless.
 
 Examples:
 
@@ -71,8 +76,13 @@ spread the load. It takes two arguments — the **total** MiB to test and the
 MiB **per instance** (default 512) — and starts `ceil(TotalMB / PerMB)`
 instances (stride 256, offset stepping +8 each, unique PID-based seed). It
 prints a line as each one starts, then stays alive until `Ctrl+C`, at which
-point it kills every instance. No log files are written: if any instance hits
-corruption it exits with code 2 and the script reports it in red.
+point it kills every instance. Add `-Zero` to pass `--zero` to every instance.
+
+Each instance's output is captured to a temp file. If an instance detects
+corruption (exit code 2), its full output — the `MISMATCH` line, expected
+pattern, offset/stride and the hex page dump — is printed to the console in red
+**and** saved to `<pid>_corrupted_page.txt` in the current directory. Temp
+files of instances that finish cleanly are removed.
 
 Keep `mempat.exe` in the same folder as the script (it's also found via the
 current dir / `PATH`).
@@ -82,6 +92,7 @@ current dir / `PATH`).
 ```powershell
 .\run-mempat.ps1 4096            # test 4096 MiB in 512 MiB chunks (8 instances)
 .\run-mempat.ps1 4096 1024       # test 4096 MiB in 1024 MiB chunks (4 instances)
+.\run-mempat.ps1 4096 1024 -Zero # same, but zero-fill each region first
 ```
 
 If the script was downloaded (Mark-of-the-Web) and is blocked, either
@@ -174,6 +185,8 @@ x86_64-w64-mingw32-gcc -O2 mempat.c -o mempat.exe
 - A `MISMATCH` line and exit code `2`: real corruption — note the address,
   expected, and got values (a single flipped bit points at hardware/ECC;
   wholesale wrong values or another process's range point at a paging/
-  hypervisor fault). The process stops at the first mismatch.
+  hypervisor fault). The process stops at the first mismatch and dumps the whole
+  failing page in hex. Under `run-mempat.ps1` that dump is also saved to
+  `<pid>_corrupted_page.txt`.
 - If the VM itself crashes/BSODs or the process is killed during a run, that is
   itself the signal being hunted (e.g. resource-exhaustion instability).
