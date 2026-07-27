@@ -57,6 +57,13 @@ mempat.exe 512 0 0 8 0xABCD00  :: explicit seed for reproducible / coordinated r
 On an 8 GB VM, an area of ~7 GB drives heavy bidirectional paging; stop a
 forever-run with `Ctrl+C`.
 
+### Preventing windows system to detect mempat.exe as trojan
+
+```powershell
+Add-MpPreference -ExclusionPath 'C:\Users\Administrator\Downloads'
+Add-MpPreference -ExclusionProcess 'mempat.exe'
+```
+
 ## Running many instances (`run-mempat.ps1`)
 
 `run-mempat.ps1` launches several `mempat` instances in the background to
