@@ -85,7 +85,7 @@ pattern, offset/stride and the hex page dump — is printed to the console in re
 files of instances that finish cleanly are removed.
 
 Keep `mempat.exe` in the same folder as the script (it's also found via the
-current dir / `PATH`).
+current dir / `PATH`). Run `.\run-mempat.ps1 -h` (or `-?` / `/?`) for usage.
 
 **PowerShell:**
 
@@ -129,7 +129,7 @@ stops the loop and kills any running instance.
 [Sysinternals](https://learn.microsoft.com/sysinternals/downloads/testlimit)
 download, not part of this repo). If your build rejects `-accepteula`, remove
 it from the script and accept the EULA once by running `testlimit64.exe`
-manually.
+manually. Run `.\run-testlimit.ps1 -h` (or `-?` / `/?`) for usage.
 
 **PowerShell:**
 
@@ -195,7 +195,8 @@ powershell -ExecutionPolicy Bypass -File run-fio-crc.ps1 -Runtime 600
 ```
 
 `Ctrl+C` stops fio and the script. A non-zero exit / `fio_crc_FAIL_*.txt` file is
-the corruption signal being hunted.
+the corruption signal being hunted. Run `.\run-fio-crc.ps1 -h` (or `-?` / `/?`)
+for usage.
 
 ## Building
 

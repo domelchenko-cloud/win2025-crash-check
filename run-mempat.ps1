@@ -1,15 +1,9 @@
 <#
-    run-mempat.ps1 - launch several mempat instances in the background.
+.SYNOPSIS
+    Launch several mempat instances in the background to stress memory/pagefile.
 
-    Usage (from cmd.exe):
-        powershell -ExecutionPolicy Bypass -File run-mempat.ps1 <TotalMB> [PerMB] [-Zero]
-
-    TotalMB : total megabytes to test across all instances
-    PerMB   : megabytes each mempat instance examines (default 512)
-    -Zero   : pass --zero to every mempat instance (zero-fill the region once
-              after allocation, before the pattern cycles begin)
-
-    Instance count = ceil(TotalMB / PerMB). Each instance runs forever with
+.DESCRIPTION
+    Starts ceil(TotalMB / PerMB) mempat instances. Each runs forever with
     stride 256 and offset = index*8 (0, 8, 16, ...). mempat's default seed is
     PID-based, so every instance uses a unique pattern range.
 
@@ -19,12 +13,66 @@
     <pid>_corrupted_page.txt in the current directory.
 
     Ctrl+C stops the script and kills all launched instances.
+
+.PARAMETER TotalMB
+    Total MiB to test across all instances (required).
+.PARAMETER PerMB
+    MiB each mempat instance examines (default 512).
+.PARAMETER Zero
+    Pass --zero to every instance (zero-fill the region once after allocation).
+.PARAMETER Help
+    Show usage. Also available as -h, -?, and /?.
+
+.EXAMPLE
+    .\run-mempat.ps1 4096
+.EXAMPLE
+    .\run-mempat.ps1 4096 1024 -Zero
 #>
 param(
-    [Parameter(Mandatory = $true)][int]$TotalMB,
-    [int]$PerMB = 512,
-    [switch]$Zero
+    [Parameter(Position = 0)][string]$TotalMB,
+    [Parameter(Position = 1)][int]$PerMB = 512,
+    [switch]$Zero,
+    [Alias('h')][switch]$Help,
+    [Parameter(ValueFromRemainingArguments = $true)][string[]]$Rest
 )
+
+function Show-Usage {
+    @'
+run-mempat.ps1 - launch several mempat instances in the background.
+
+Usage:
+  run-mempat.ps1 <TotalMB> [PerMB] [-Zero]
+  run-mempat.ps1 -h | -? | /?
+
+Parameters:
+  <TotalMB>    Total MiB to test across all instances (required).
+  [PerMB]      MiB each mempat instance examines            (default 512).
+  -Zero        Pass --zero to every instance (zero-fill the region first).
+  -h, -?, /?   Show this help.
+
+Instance count = ceil(TotalMB / PerMB).
+
+Examples:
+  run-mempat.ps1 4096
+  run-mempat.ps1 4096 1024 -Zero
+'@ | Write-Host
+}
+
+# Help: -Help/-h bind here; -? shows comment-based help natively; /? (and a
+# stray --help/help/-help) arrive as text and are matched below.
+$helpTokens = @('-h', '-help', '--help', 'help', '/?', '/h', '-?', '?')
+$asked = $Help -or
+         ($TotalMB -and ($helpTokens -contains $TotalMB.ToLower())) -or
+         ($Rest | Where-Object { $helpTokens -contains $_.ToLower() })
+if ($asked) { Show-Usage; return }
+
+# TotalMB is a string (so "/?" can't fail an int cast); validate it now.
+[int]$TotalMBInt = 0
+if (-not $TotalMB -or -not [int]::TryParse($TotalMB, [ref]$TotalMBInt) -or $TotalMBInt -le 0) {
+    Write-Host "error: <TotalMB> is required and must be a positive integer.`n" -ForegroundColor Red
+    Show-Usage
+    exit 1
+}
 
 if ($PerMB -le 0) { $PerMB = 512 }
 
@@ -32,7 +80,7 @@ $stride = 256
 $exe = Join-Path $PSScriptRoot 'mempat.exe'
 if (-not (Test-Path $exe)) { $exe = 'mempat.exe' }   # fall back to cwd / PATH
 
-$count = [int][math]::Ceiling($TotalMB / $PerMB)
+$count = [int][math]::Ceiling($TotalMBInt / $PerMB)
 $procs = @()
 
 # Handle a corrupting instance: show its captured output and save the dump.

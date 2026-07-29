@@ -1,29 +1,74 @@
 <#
-    run-testlimit.ps1 - repeatedly fill a target amount of memory with
-    Sysinternals Testlimit in bursts (start -> wait -> kill -> restart).
+.SYNOPSIS
+    Repeatedly fill a target amount of memory with Sysinternals Testlimit in
+    bursts (start -> wait -> kill -> restart).
 
-    Usage (from cmd.exe):
-        powershell -ExecutionPolicy Bypass -File run-testlimit.ps1 <TotalMB> [WaitSeconds]
-
-    TotalMB     : megabytes to fill/check each burst
-    WaitSeconds : seconds to let each burst run before killing it (default 5)
-
+.DESCRIPTION
     Each burst runs:  testlimit64.exe -accepteula -d 512 -c <ceil(TotalMB/512)>
-    (-d 512 = allocate and touch 512 MB chunks; -c = number of chunks needed
-    to reach TotalMB). Loops forever; killing a burst frees its memory before
-    the next one starts. Ctrl+C stops the loop and kills any running instance.
+    (-d 512 = allocate and touch 512 MB chunks; -c = number of chunks needed to
+    reach TotalMB). Loops forever; killing a burst frees its memory before the
+    next one starts. Ctrl+C stops the loop and kills any running instance.
 
     Keep testlimit64.exe in this folder or on PATH. If your Testlimit build
     rejects -accepteula, remove it below and accept the EULA once by running
     testlimit64.exe manually.
+
+.PARAMETER TotalMB
+    MiB to fill/check each burst (required).
+.PARAMETER WaitSeconds
+    Seconds to let each burst run before killing it (default 5).
+.PARAMETER Help
+    Show usage. Also available as -h, -?, and /?.
+
+.EXAMPLE
+    .\run-testlimit.ps1 4096
+.EXAMPLE
+    .\run-testlimit.ps1 4096 10
 #>
 param(
-    [Parameter(Mandatory = $true)][int]$TotalMB,
-    [int]$WaitSeconds = 5
+    [Parameter(Position = 0)][string]$TotalMB,
+    [Parameter(Position = 1)][int]$WaitSeconds = 5,
+    [Alias('h')][switch]$Help,
+    [Parameter(ValueFromRemainingArguments = $true)][string[]]$Rest
 )
 
+function Show-Usage {
+    @'
+run-testlimit.ps1 - fill memory in bursts with Sysinternals Testlimit.
+
+Usage:
+  run-testlimit.ps1 <TotalMB> [WaitSeconds]
+  run-testlimit.ps1 -h | -? | /?
+
+Parameters:
+  <TotalMB>       MiB to fill/check each burst (required).
+  [WaitSeconds]   Seconds each burst runs before it is killed (default 5).
+  -h, -?, /?      Show this help.
+
+Examples:
+  run-testlimit.ps1 4096
+  run-testlimit.ps1 4096 10
+'@ | Write-Host
+}
+
+# Help: -Help/-h bind here; -? shows comment-based help natively; /? (and a
+# stray --help/help/-help) arrive as text and are matched below.
+$helpTokens = @('-h', '-help', '--help', 'help', '/?', '/h', '-?', '?')
+$asked = $Help -or
+         ($TotalMB -and ($helpTokens -contains $TotalMB.ToLower())) -or
+         ($Rest | Where-Object { $helpTokens -contains $_.ToLower() })
+if ($asked) { Show-Usage; return }
+
+# TotalMB is a string (so "/?" can't fail an int cast); validate it now.
+[int]$TotalMBInt = 0
+if (-not $TotalMB -or -not [int]::TryParse($TotalMB, [ref]$TotalMBInt) -or $TotalMBInt -le 0) {
+    Write-Host "error: <TotalMB> is required and must be a positive integer.`n" -ForegroundColor Red
+    Show-Usage
+    exit 1
+}
+
 $chunkMB = 512
-$chunks  = [int][math]::Ceiling($TotalMB / $chunkMB)
+$chunks  = [int][math]::Ceiling($TotalMBInt / $chunkMB)
 if ($chunks -lt 1) { $chunks = 1 }
 
 $exe    = 'testlimit64.exe'                             # resolved via cwd / PATH
