@@ -1,0 +1,44 @@
+; fio-crc.fio - direct random read/write disk stress with CRC32C verification.
+;
+; One job, one writer per file: fio issues random WRITES (each block carries a
+; self-describing CRC32C header) and, via verify_backlog, keeps going back to
+; READ and re-check the blocks it just wrote. So the device sees mixed random
+; read + write traffic, every read is CRC-verified, and - because reads only
+; ever target blocks fio already wrote - there are no false "verify failed"
+; hits and no cross-job overwrite warning. On the FIRST CRC mismatch fio dumps
+; the bad block and aborts with a non-zero exit status.
+;
+; Why not rw=randrw with a separate prefill? Two job sections writing the same
+; files trip fio's "multiple writers may overwrite blocks that belong to other
+; jobs" warning, and plain randrw reads can land on never-written blocks and
+; false-fail. randwrite + verify_backlog avoids both.
+;
+; All tunables come from environment variables set by run-fio-crc.ps1:
+;   DIR NRFILES SIZE NJOBS RUNTIME TIMEBASED
+; The wrapper is the intended entry point.
+
+[global]
+ioengine=windowsaio        ; native async engine; supports direct I/O on Windows
+direct=1                   ; bypass the OS cache (FILE_FLAG_NO_BUFFERING)
+thread=1                   ; threads, not fork - required on Windows
+directory=${DIR}           ; test directory (wrapper cd's here and passes ".")
+filename_format=$jobnum.$filenum   ; each clone owns its own files (one writer)
+nrfiles=${NRFILES}         ; several files per job/thread
+size=${SIZE}               ; total data per job (split across nrfiles)
+bs=4k                      ; 4 KiB blocks, sector aligned for direct I/O
+randrepeat=0               ; fresh random sequence each run
+group_reporting=1
+
+; --- data integrity ---
+verify=crc32c              ; write a CRC32C header per block; recheck on read
+verify_fatal=1             ; abort the job on the first CRC mismatch
+verify_dump=1              ; dump the mismatching block(s) for inspection
+continue_on_error=none     ; stop on any error (including verify)
+
+[crc-stress]
+rw=randwrite               ; random writes; verify_backlog adds the read traffic
+verify_backlog=1024        ; every 1024 written blocks, read them back + verify
+verify_backlog_batch=1024
+runtime=${RUNTIME}         ; seconds (0 + time_based=0 => one size-bound pass)
+time_based=${TIMEBASED}    ; 1 => keep looping for RUNTIME seconds
+numjobs=${NJOBS}           ; 2x logical CPUs (set by the wrapper)

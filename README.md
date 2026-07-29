@@ -144,6 +144,59 @@ manually.
 powershell -ExecutionPolicy Bypass -File run-testlimit.ps1 4096
 ```
 
+## Disk read/write CRC stress (`fio-crc.fio` + `run-fio-crc.ps1`)
+
+Where `mempat` hammers RAM/pagefile, this drives **direct** (uncached) random
+read/write disk I/O with per-block **CRC32C** verification, to catch storage /
+backend corruption. It uses [fio](https://github.com/axboe/fio) — install
+`fio.exe` for Windows and keep it on `PATH` (or pass `-Fio`).
+
+`run-fio-crc.ps1` computes **2× the logical CPU count** worth of threads, makes
+a fresh test directory with several files per thread, and runs `fio-crc.fio`:
+`direct=1` random **writes**, each block carrying a self-describing CRC32C
+header, with `verify_backlog` continuously going back to **read** and re-check
+the blocks just written. The device therefore sees mixed random read/write
+traffic and every read is CRC-verified. On the **first** mismatch fio dumps the
+bad block and aborts non-zero.
+
+Each thread owns its own files (one writer per file), so this never trips fio's
+"multiple writers may overwrite blocks that belong to other jobs" warning and
+never false-fails on a block it hasn't written yet.
+
+The wrapper exits `2` on any CRC mismatch (matching `mempat`) and saves the full
+fio output — including the bad-block dump — to `fio_crc_FAIL_<timestamp>.txt` in
+the current directory. Exit `0` means every block verified.
+
+| Param           | Meaning                                         | Default          |
+|-----------------|-------------------------------------------------|------------------|
+| `-SizePerJobMB` | Data per thread, in MiB                         | `512`            |
+| `-Files`        | Files per thread                                | `4`              |
+| `-Jobs`         | Thread count (`0` = auto, 2× logical CPUs)      | `0`              |
+| `-Runtime`      | Seconds for the random phase (`0` = one pass)   | `0`              |
+| `-Dir`          | Test directory (created if missing)             | `.\fio-crc-data` |
+| `-Fio`          | Path to `fio.exe`                               | `fio.exe`        |
+
+Total on-disk footprint ≈ `Jobs × SizePerJobMB`; keep it under the volume's free
+space.
+
+**PowerShell:**
+
+```powershell
+.\run-fio-crc.ps1                              # 2x CPUs, 512 MB/thread, one pass
+.\run-fio-crc.ps1 -SizePerJobMB 1024 -Files 8  # bigger footprint, more files
+.\run-fio-crc.ps1 -Runtime 600                 # loop the random phase for 10 min
+.\run-fio-crc.ps1 -Dir D:\fio-test             # test a specific volume
+```
+
+**cmd.exe:**
+
+```cmd
+powershell -ExecutionPolicy Bypass -File run-fio-crc.ps1 -Runtime 600
+```
+
+`Ctrl+C` stops fio and the script. A non-zero exit / `fio_crc_FAIL_*.txt` file is
+the corruption signal being hunted.
+
 ## Building
 
 ### CI (recommended — download a prebuilt binary)
