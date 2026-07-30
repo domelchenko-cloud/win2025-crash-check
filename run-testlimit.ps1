@@ -54,9 +54,13 @@ Examples:
 # Help: -Help/-h bind here; -? shows comment-based help natively; /? (and a
 # stray --help/help/-help) arrive as text and are matched below.
 $helpTokens = @('-h', '-help', '--help', 'help', '/?', '/h', '-?', '?')
-$asked = $Help -or
-         ($TotalMB -and ($helpTokens -contains $TotalMB.ToLower())) -or
-         ($Rest | Where-Object { $helpTokens -contains $_.ToLower() })
+$asked = [bool]$Help
+if (-not $asked -and $TotalMB) { $asked = $helpTokens -contains $TotalMB.ToLower() }
+if (-not $asked -and $Rest) {
+    foreach ($r in $Rest) {
+        if ($r -and ($helpTokens -contains $r.ToLower())) { $asked = $true; break }
+    }
+}
 if ($asked) { Show-Usage; return }
 
 # TotalMB is a string (so "/?" can't fail an int cast); validate it now.
