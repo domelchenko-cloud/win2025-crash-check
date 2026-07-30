@@ -8,8 +8,8 @@
     verify_backlog continuously reads them back to verify, so the device sees
     mixed random read/write and every read is CRC-checked. On the first mismatch
     fio aborts non-zero; this wrapper saves fio's full text output to
-    fio_crc_FAIL_<timestamp>.txt in the current directory, prints it, and exits
-    with code 2 (like mempat).
+    fio_crc_FAIL_<timestamp>.txt in the test directory (-Dir), prints it, and
+    exits with code 2 (like mempat).
 
     Total files on disk = Jobs * Files. Footprint ~= Jobs * SizePerJobMB; keep
     that below free disk space on the target volume.
@@ -108,9 +108,9 @@ if ([string]::IsNullOrWhiteSpace($Dir)) {
     $Dir = Join-Path (Get-Location).Path 'fio-crc-data'
 }
 New-Item -ItemType Directory -Force -Path $Dir | Out-Null
-
-# Where FAIL logs land (before we change directory).
-$saveDir = (Get-Location).Path
+# Resolve to an absolute path so the FAIL report lands in -Dir regardless of
+# the current location (we Push-Location into it during the run).
+$Dir = (Resolve-Path -Path $Dir).Path
 
 # fio parameters are passed via environment (see fio-crc.fio). We cd into the
 # test dir and use directory="." so Windows drive-letter colons never need the
@@ -157,7 +157,7 @@ if ($exit -eq 0) {
 # Non-zero => a CRC mismatch (or other fatal I/O error). Preserve the evidence:
 # save fio's full text output to the FAIL file AND print it to the console.
 $stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-$dest  = Join-Path $saveDir ("fio_crc_FAIL_{0}.txt" -f $stamp)
+$dest  = Join-Path $Dir ("fio_crc_FAIL_{0}.txt" -f $stamp)
 
 $content = ''
 if (Test-Path $log) { $content = Get-Content -Raw -Path $log }

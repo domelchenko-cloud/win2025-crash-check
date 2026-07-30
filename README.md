@@ -165,7 +165,7 @@ never false-fails on a block it hasn't written yet.
 
 The wrapper exits `2` on any CRC mismatch (matching `mempat`) and saves the full
 fio output — including the bad-block dump — to `fio_crc_FAIL_<timestamp>.txt` in
-the current directory. Exit `0` means every block verified.
+the test directory (`-Dir`). Exit `0` means every block verified.
 
 | Param           | Meaning                                         | Default          |
 |-----------------|-------------------------------------------------|------------------|
